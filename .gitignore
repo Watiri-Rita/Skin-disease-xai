@@ -1,0 +1,41 @@
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# --- Virtual Environment ---
+venv/
+.env/
+
+# --- Jupyter / Notebooks ---
+.ipynb_checkpoints/
+*.ipynb
+
+# --- Data ---
+data/raw/
+data/processed/
+*.csv
+*.h5
+*.db
+*.sqlite3
+
+# --- Logs & Outputs ---
+*.log
+logs/
+runs/
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+
+# --- OS / IDE Files ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Kaggle ---
+.kaggle/
+kaggle.json
