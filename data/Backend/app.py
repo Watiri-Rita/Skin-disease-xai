@@ -1,49 +1,43 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 from model import SkinDiseaseModel
-from explain import grad_cam
-from PIL import Image
-import numpy as np
-import cv2
-import io
-import base64
+import os
 
+# Initialize Flask
 app = Flask(__name__)
-CORS(app)  # allow frontend requests
 
-model_handler = SkinDiseaseModel("../models/skin_disease_model.h5")
+# Load model
+MODEL_PATH = "../models/skin-disease-model.h5"
 
+CLASS_NAMES = ["Acne", "Eczema", "FU-ringworm"]   # <-- update this if you have exact class names
+
+model_handler = SkinDiseaseModel(MODEL_PATH)
+
+# Upload & predict endpoint
 @app.route("/predict", methods=["POST"])
 def predict():
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files["file"]
-    image = Image.open(file.stream).convert("RGB")
 
-    # Prediction
-    pred_class, confidence, preds = model_handler.predict(image)
+    if file.filename == "":
+        return jsonify({"error": "Empty filename"}), 400
 
-    # Grad-CAM
-    img_array = model_handler.preprocess(image)
-    heatmap = grad_cam(model_handler.model, img_array)
+    # Save temporarily
+    file_path = os.path.join("uploads", file.filename)
+    os.makedirs("uploads", exist_ok=True)
+    file.save(file_path)
 
-    # Overlay heatmap
-    img = np.array(image.resize((224,224)))
-    heatmap = cv2.resize(heatmap, (img.shape[1], img.shape[0]))
-    heatmap = np.uint8(255 * heatmap)
-    heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-    overlay = cv2.addWeighted(img, 0.6, heatmap, 0.4, 0)
+    # Run prediction
+    predicted_label, confidence = model_handler.predict(file_path, CLASS_NAMES)
 
-    # Encode heatmap
-    _, buffer = cv2.imencode(".png", overlay)
-    heatmap_b64 = base64.b64encode(buffer).decode("utf-8")
+    # Remove temp file
+    os.remove(file_path)
 
     return jsonify({
-        "prediction": pred_class,
-        "confidence": confidence,
-        "heatmap": heatmap_b64
+        "predicted_class": predicted_label,
+        "confidence": confidence
     })
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True)

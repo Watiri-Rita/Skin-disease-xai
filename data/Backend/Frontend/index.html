@@ -1,43 +1,53 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Skin Disease Classifier</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skin Disease Detection </title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body style="text-align: center; margin-top: 50px;">
-  <h1>Skin Disease Classification</h1>
-  <input type="file" id="fileInput" />
-  <button onclick="uploadImage()">Predict</button>
+<body class="bg-gradient-to-br from-pink-100 to-purple-200 min-h-screen flex items-center justify-center">
 
-  <h2 id="result"></h2>
-  <p id="confidence"></p>
-  <img id="heatmap" style="max-width: 400px; display: none;" />
+    <div class="bg-white shadow-lg rounded-2xl p-8 w-full max-w-lg">
+        <h1 class="text-3xl font-bold text-center text-pink-600 mb-6">Skin Disease Detector 🩺</h1>
 
-  <script>
-    async function uploadImage() {
-      const fileInput = document.getElementById("fileInput");
-      if (!fileInput.files.length) {
-        alert("Please select an image first.");
-        return;
-      }
+        <form id="uploadForm" enctype="multipart/form-data" class="space-y-4">
+            <label class="block text-gray-700 font-medium">Upload Skin Image</label>
+            <input type="file" name="image" id="image" accept="image/*" 
+                   class="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4
+                          file:rounded-lg file:border-0
+                          file:text-sm file:font-semibold
+                          file:bg-pink-200 file:text-pink-800
+                          hover:file:bg-pink-300">
 
-      const formData = new FormData();
-      formData.append("file", fileInput.files[0]);
+            <button type="submit" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                Predict Disease
+            </button>
+        </form>
 
-      const response = await fetch("http://127.0.0.1:5000/predict", {
-        method: "POST",
-        body: formData
-      });
+        <div id="result" class="mt-6 text-center"></div>
+    </div>
 
-      const data = await response.json();
+    <script>
+        document.getElementById("uploadForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
 
-      document.getElementById("result").innerText = "Prediction: " + data.prediction;
-      document.getElementById("confidence").innerText = 
-          "Confidence: " + (data.confidence * 100).toFixed(2) + "%";
+            const formData = new FormData();
+            const fileField = document.querySelector("input[type='file']");
 
-      const heatmap = document.getElementById("heatmap");
-      heatmap.src = "data:image/png;base64," + data.heatmap;
-      heatmap.style.display = "block";
-    }
-  </script>
+            formData.append("image", fileField.files[0]);
+
+            const response = await fetch("/predict", {
+                method: "POST",
+                body: formData
+            });
+
+            const result = await response.json();
+            document.getElementById("result").innerHTML = `
+                <p class="text-xl font-bold text-pink-600">Prediction: ${result.prediction}</p>
+                <p class="text-gray-700">Confidence: ${(result.confidence * 100).toFixed(2)}%</p>
+            `;
+        });
+    </script>
 </body>
 </html>
