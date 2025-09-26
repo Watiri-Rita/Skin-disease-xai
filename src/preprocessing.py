@@ -2,8 +2,10 @@ import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 # Paths
-train_dir = "dataset/train"
-val_dir = "dataset/val"
+
+train_dir = r"C:\Users\PC\skin-disease-xai\data\raw\skin disease\SkinDisease\train"
+val_dir   = r"C:\Users\PC\skin-disease-xai\data\raw\skin disease\SkinDisease\val"
+
 
 # Image size
 IMG_SIZE = (224, 224)
