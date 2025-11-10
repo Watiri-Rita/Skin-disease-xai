@@ -1,119 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Skin Disease Predictor</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    body { background: linear-gradient(to right, #74ebd5, #ACB6E5); font-family: 'Poppins', sans-serif; }
-    .container { margin-top: 80px; }
-    .card { border-radius: 20px; box-shadow: 0px 5px 15px rgba(0,0,0,0.2); }
-    .card-header { background: #4CAF50; color: white; font-size: 1.4rem; font-weight: bold; text-align: center; border-radius: 20px 20px 0 0; }
-    .btn-custom { background: #4CAF50; color: white; font-weight: bold; border-radius: 12px; transition: 0.3s; }
-    .btn-custom:hover { background: #45a049; }
-    .result-card { margin-top: 20px; display: none; }
-    #preview { display: none; margin-top: 20px; max-height: 250px; border-radius: 15px; border: 2px solid #ddd; padding: 5px; background: white; }
-    #error-message { display: none; margin-top: 20px; }
-    /* Spinner overlay */
-    #loading-spinner {
-      display: none;
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(255, 255, 255, 0.7);
-      z-index: 9999;
-      justify-content: center;
-      align-items: center;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Skin Disease Classifier</title>
+<style>
+body { font-family: Arial, sans-serif; }
+img { border: 1px solid #ccc; margin: 10px; max-width: 300px; height: auto; }
+.container { display: flex; flex-direction: row; align-items: flex-start; }
+#loading { display: none; font-weight: bold; color: blue; }
+#error { color: red; font-weight: bold; }
+</style>
 </head>
 <body>
+<h1>Skin Disease Classifier</h1>
 
-<!-- Spinner -->
-<div id="loading-spinner">
-  <div class="spinner-border text-success" role="status" style="width: 4rem; height: 4rem;">
-    <span class="visually-hidden">Loading...</span>
-  </div>
-</div>
+<form id="upload-form">
+<input type="file" id="file-input" accept="image/*" required>
+<button type="submit">Predict</button>
+</form>
 
+<p id="loading">🔄 Predicting... please wait</p>
+<p id="error"></p>
+
+<h2>Prediction:</h2>
+<p id="prediction"></p>
+<p id="confidence"></p>
+
+<h2>Images:</h2>
 <div class="container">
-  <div class="card p-4">
-    <div class="card-header">🩺 Skin Disease Predictor</div>
-    <div class="card-body">
-      <form id="upload-form" enctype="multipart/form-data">
-        <div class="mb-3">
-          <label class="form-label">Upload an Image</label>
-          <input type="file" class="form-control" id="file" name="file" accept="image/*" required>
-        </div>
-
-        <div class="text-center">
-          <img id="preview" alt="Image Preview">
-        </div>
-
-        <button type="submit" class="btn btn-custom w-100 mt-3">Predict</button>
-      </form>
-
-      <!-- Result -->
-      <div class="result-card card mt-4 p-3 text-center" id="result">
-        <h5 id="prediction"></h5>
-        <p id="confidence" class="text-muted"></p>
-      </div>
-
-      <!-- Error -->
-      <div class="alert alert-danger text-center" id="error-message"></div>
+    <div>
+        <p>Original Image</p>
+        <img id="original-img" src="" alt="Original image">
     </div>
-  </div>
+    <div>
+        <p>Grad-CAM Overlay</p>
+        <img id="gradcam-img" src="" alt="Grad-CAM overlay">
+    </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 <script>
-  // Image Preview
-  document.getElementById("file").addEventListener("change", function(event) {
-    let file = event.target.files[0];
-    if (file) {
-      let reader = new FileReader();
-      reader.onload = function(e) {
-        let preview = document.getElementById("preview");
-        preview.src = e.target.result;
-        preview.style.display = "block";
-      }
-      reader.readAsDataURL(file);
-    }
-  });
+document.getElementById("upload-form").addEventListener("submit", async (e)=>{
+    e.preventDefault();
+    const fileInput = document.getElementById("file-input");
+    const file = fileInput.files[0];
+    if(!file) return;
 
-  // Form submission
-  document.getElementById("upload-form").addEventListener("submit", async function(event) {
-    event.preventDefault();
+    document.getElementById("error").innerText = "";
+    document.getElementById("prediction").innerText = "";
+    document.getElementById("confidence").innerText = "";
+    document.getElementById("original-img").src = "";
+    document.getElementById("gradcam-img").src = "";
 
-    let formData = new FormData();
-    let fileInput = document.getElementById("file");
-    formData.append("file", fileInput.files[0]);
+    document.getElementById("loading").style.display = "block";
 
-    // Show spinner
-    document.getElementById("loading-spinner").style.display = "flex";
+    const formData = new FormData();
+    formData.append("file", file);
 
     try {
-      let response = await axios.post("/predict", formData, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
+        const response = await fetch("/predict", {method:"POST", body:formData});
+        const data = await response.json();
 
-      document.getElementById("result").style.display = "block";
-      document.getElementById("error-message").style.display = "none";
-      document.getElementById("prediction").innerText = "Prediction: " + response.data.prediction;
-      document.getElementById("confidence").innerText = "Confidence: " + response.data.confidence;
+        if(response.ok){
+            document.getElementById("prediction").innerText = "Label: " + data.prediction;
+            document.getElementById("confidence").innerText = "Confidence: " + data.confidence;
 
-    } catch (error) {
-      let message = error.response?.data?.error || "Server error. Check backend logs.";
-      document.getElementById("error-message").innerText = message;
-      document.getElementById("error-message").style.display = "block";
-      document.getElementById("result").style.display = "none";
+            if(data.original_base64){
+                document.getElementById("original-img").src = data.original_base64;
+            }
+            if(data.gradcam_base64){
+                document.getElementById("gradcam-img").src = data.gradcam_base64;
+            } else {
+                document.getElementById("gradcam-img").alt = "Grad-CAM not generated";
+            }
+        } else {
+            document.getElementById("error").innerText = data.error || "Prediction failed";
+        }
+    } catch(err){
+        console.error(err);
+        document.getElementById("error").innerText = "An error occurred. Check console for details.";
     } finally {
-      // Hide spinner
-      document.getElementById("loading-spinner").style.display = "none";
+        document.getElementById("loading").style.display = "none";
     }
-  });
+});
 </script>
-
 </body>
 </html>
