@@ -1,84 +1,114 @@
+
 import os
-import json
-import numpy as np
-import base64
-import cv2
-from flask import Flask, request, jsonify, render_template
-from tensorflow.keras.models import load_model
-from PIL import Image
 import io
-from gradcam_utils import generate_gradcam_overlay
+import base64
+import numpy as np
+from PIL import Image
+from flask import Flask, request, jsonify, render_template
+import tensorflow as tf
+import cv2
+from gradcam_utils import generate_gradcam_overlay, find_last_conv_layer
 
-app = Flask(__name__)
+MODEL_PATH = "../../models/skin-disease-transfer.h5"
+IMG_SIZE = (224, 224)
+CLASS_NAMES = ["Acne", "Eczema", "Ringworm", "Normal"] 
+CONF_THRESHOLD = 0.60
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "../../models/skin-disease-transfer.h5")
-CLASS_INDICES_PATH = os.path.join(os.path.dirname(__file__), "../../models/class_indices.json")
-UPLOAD_FOLDER = os.path.join("static", "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# -------------------
+# APP
+# -------------------
+app = Flask(__name__, template_folder="templates")
 
-# Load model
-model = load_model(MODEL_PATH)
-with open(CLASS_INDICES_PATH, "r") as f:
-    class_indices = json.load(f)
-idx_to_class = {v:k for k,v in class_indices.items()}
+print("Loading model:", MODEL_PATH)
+model = tf.keras.models.load_model(MODEL_PATH)
 
-def preprocess_image(image_bytes):
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    img = img.resize((224,224))
-    img_array = np.array(img)/255.0
-    return np.expand_dims(img_array, axis=0)
+# autodetect last conv layer
+try:
+    LAST_CONV_LAYER_NAME = find_last_conv_layer(model)
+    print("Detected last conv layer:", LAST_CONV_LAYER_NAME)
+except:
+    LAST_CONV_LAYER_NAME = None
+    print("Could not detect last conv layer. Grad-CAM may fail.")
 
+# UTILITIES
+def preprocess_image(image_pil, target_size):
+    img = image_pil.convert("RGB")
+    img = img.resize(target_size, Image.BILINEAR)
+    arr = np.array(img).astype(np.float32) / 255.0
+    arr = np.expand_dims(arr, axis=0)
+    return arr
+
+def image_to_dataurl(img_pil, fmt="PNG"):
+    buffer = io.BytesIO()
+    img_pil.save(buffer, format=fmt)
+    b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return f"data:image/{fmt.lower()};base64,{b64}"
+# ROUTES
 @app.route("/", methods=["GET"])
 def index():
     return render_template("index.html")
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    # validate upload
+    if "file" not in request.files:
+        return jsonify({"error": "no file uploaded"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "empty filename"}), 400
+
     try:
-        if "file" not in request.files:
-            return jsonify({"error":"No file uploaded"}), 400
-        file = request.files["file"]
-        if file.filename == "":
-            return jsonify({"error":"Empty filename"}), 400
+        img_pil = Image.open(file.stream)
+    except:
+        return jsonify({"error": "invalid image"}), 400
 
-        img_bytes = file.read()
-        img_array = preprocess_image(img_bytes)
+    # preprocess
+    img_array = preprocess_image(img_pil, IMG_SIZE)
 
-        preds = model.predict(img_array)
-        pred_idx = int(np.argmax(preds))
-        confidence = float(np.max(preds)*100)
-        pred_label = idx_to_class.get(pred_idx,"Unknown")
+    # predict
+    preds = model.predict(img_array)[0]
+    preds = np.array(preds, dtype=float)
+    preds = np.exp(preds) / np.sum(np.exp(preds))  # softmax
 
-        # Save uploaded file (optional)
-        saved_path = os.path.join(UPLOAD_FOLDER, file.filename)
-        with open(saved_path,"wb") as f:
-            f.write(img_bytes)
+    # determine class names
+    num_classes = len(preds)
+    class_names = CLASS_NAMES if len(CLASS_NAMES) == num_classes else [f"class_{i}" for i in range(num_classes)]
 
-        # Convert original image to Base64
-        original_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-        original_img = original_img.resize((224,224))
-        original_array = np.array(original_img)
-        _, buffer = cv2.imencode('.png', original_array)
-        original_base64 = "data:image/png;base64," + base64.b64encode(buffer).decode()
+    confidences = {class_names[i]: float(preds[i]) for i in range(num_classes)}
+    top_idx = int(np.argmax(preds))
+    top_conf = float(preds[top_idx])
+    top_label = class_names[top_idx]  # updated from final_label
 
-        # Generate Grad-CAM overlay
-        overlay_img = generate_gradcam_overlay(model, img_array, pred_idx)
-        overlay_base64 = None
-        if overlay_img is not None:
-            _, buffer = cv2.imencode('.png', overlay_img)
-            overlay_base64 = "data:image/png;base64," + base64.b64encode(buffer).decode()
+    # encode original image
+    disp = img_pil.copy()
+    disp.thumbnail((700, 700))
+    original_base64 = image_to_dataurl(disp)
 
-        return jsonify({
-            "prediction": pred_label,
-            "confidence": f"{confidence:.2f}%",
-            "original_base64": original_base64,
-            "gradcam_base64": overlay_base64
-        })
+    # GRAD-CAM
+    gradcam_base64 = None
+    if LAST_CONV_LAYER_NAME is not None:
+        overlay = generate_gradcam_overlay(model, img_array, top_idx)
+        if overlay is not None:
+            #RGB for PIL
+            overlay_rgb = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+            overlay_pil = Image.fromarray(overlay_rgb)
+            gradcam_base64 = image_to_dataurl(overlay_pil)
 
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+    # RETURN JSON
 
-if __name__=="__main__":
-    app.run(debug=True)
+    result = {
+        "prediction": top_label,
+        "confidence": top_conf,
+        "confidences": confidences,
+        "original_base64": original_base64,
+        "gradcam_base64": gradcam_base64
+    }
+
+    return jsonify(result)
+
+# RUN
+
+if __name__ == "__main__":
+    app.run(port=5000, debug=True)
+

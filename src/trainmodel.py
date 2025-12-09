@@ -50,16 +50,14 @@ val_generator = val_datagen.flow_from_directory(
     class_mode="categorical"
 )
 
-print("\n✅ Data Loaded Successfully!")
+print("\ Data Loaded Successfully!")
 print("Class indices:", train_generator.class_indices)
 
 # Save class indices
 with open(os.path.join(model_dir, "class_indices.json"), "w") as f:
     json.dump(train_generator.class_indices, f)
 
-# -------------------------------
-# 3. Compute Class Weights (Handle Imbalance)
-# -------------------------------
+#  Compute Class Weights (Handle Imbalance)
 labels = train_generator.classes
 class_weights = compute_class_weight(
     class_weight="balanced",
@@ -67,11 +65,9 @@ class_weights = compute_class_weight(
     y=labels
 )
 class_weights = dict(enumerate(class_weights))
-print("📊 Class Weights:", class_weights)
+print("Class Weights:", class_weights)
 
-# -------------------------------
 # 4. Build Transfer Learning Model
-# -------------------------------
 base_model = keras.applications.MobileNetV2(
     weights="imagenet", 
     include_top=False,
@@ -103,7 +99,7 @@ early_stop = keras.callbacks.EarlyStopping(
     monitor="val_loss", patience=5, restore_best_weights=True
 )
 
-print("\n🚀 Starting Phase 1 Training (Frozen Base Layers)...")
+print("\nStarting Phase 1 Training (Frozen Base Layers)...")
 
 history = model.fit(
     train_generator,
@@ -115,7 +111,7 @@ history = model.fit(
 
 # Save first model version
 model.save(os.path.join(model_dir, "skin-disease-transfer.h5"))
-print("\n✅ Model saved after Phase 1: skin-disease-transfer.h5")
+print("\nModel saved after Phase 1: skin-disease-transfer.h5")
 
 # Save training history
 with open(os.path.join(model_dir, "training_history_phase1.pkl"), "wb") as f:
@@ -124,7 +120,7 @@ with open(os.path.join(model_dir, "training_history_phase1.pkl"), "wb") as f:
 # -------------------------------
 # 6. Fine-Tuning Phase 2
 # -------------------------------
-print("\n🔧 Starting Phase 2: Fine-tuning last layers...")
+print("\nStarting Phase 2: Fine-tuning last layers...")
 
 # Unfreeze last 30 layers for fine-tuning
 base_model.trainable = True
@@ -147,10 +143,10 @@ fine_tune_history = model.fit(
 
 # Save fine-tuned model
 model.save(os.path.join(model_dir, "skin-disease-transfer-finetuned.h5"))
-print("\n✅ Fine-tuned model saved as: skin-disease-transfer-finetuned.h5")
+print("\n Fine-tuned model saved as: skin-disease-transfer-finetuned.h5")
 
 # Save fine-tuning history
 with open(os.path.join(model_dir, "training_history_finetune.pkl"), "wb") as f:
     pickle.dump(fine_tune_history.history, f)
 
-print("\n🎉 Training Complete! You can now test or deploy your model.")
+print("\nTraining Complete! You can now test or deploy your model.")

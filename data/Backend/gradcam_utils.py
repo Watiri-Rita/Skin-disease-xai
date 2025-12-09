@@ -2,7 +2,6 @@ import numpy as np
 import cv2
 import tensorflow as tf
 from tensorflow.keras.models import Model
-
 def find_last_conv_layer(model):
     for layer in reversed(model.layers):
         if isinstance(layer, tf.keras.layers.Conv2D):
@@ -13,16 +12,17 @@ def find_last_conv_layer(model):
                     return f"{layer.name}/{sublayer.name}"
     return None
 
-def generate_gradcam_overlay(model, img_array, class_index):
+def generate_gradcam_overlay(model, img_array, class_index, intensity=0.4):
     try:
         inner_model = model.layers[0] if hasattr(model.layers[0], "input") else model
         last_conv_layer_name = find_last_conv_layer(inner_model)
         if last_conv_layer_name is None:
-            print("⚠️ No Conv2D layer found.")
+            print("No Conv2D layer found.")
             return None
 
         last_conv_layer = inner_model.get_layer(last_conv_layer_name)
-        grad_model = Model(inputs=inner_model.input, outputs=[last_conv_layer.output, inner_model.output])
+        grad_model = Model(inputs=inner_model.input,
+                           outputs=[last_conv_layer.output, inner_model.output])
 
         if not isinstance(img_array, tf.Tensor):
             img_array = tf.convert_to_tensor(img_array, dtype=tf.float32)
@@ -48,13 +48,12 @@ def generate_gradcam_overlay(model, img_array, class_index):
         heatmap = cv2.resize(heatmap.numpy(), (img.shape[1], img.shape[0]))
         heatmap = np.uint8(255*heatmap)
         jet = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-        superimposed = cv2.addWeighted(img, 0.6, jet, 0.4, 0)
 
-        if superimposed is None or superimposed.size==0:
-            print("⚠️ Superimposed image is empty!")
-            return None
-
-        return superimposed
+        overlay = cv2.addWeighted(img, 1-intensity, jet, intensity, 0)
+        return overlay
     except Exception as e:
-        print(f"⚠️ Grad-CAM overlay generation failed: {e}")
+        print(f"Grad-CAM generation failed: {e}")
         return None
+
+
+

@@ -1,87 +1,132 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Skin Disease Classifier</title>
 <style>
-body { font-family: Arial, sans-serif; }
-img { border: 1px solid #ccc; margin: 10px; max-width: 300px; height: auto; }
-.container { display: flex; flex-direction: row; align-items: flex-start; }
-#loading { display: none; font-weight: bold; color: blue; }
-#error { color: red; font-weight: bold; }
+  body{margin:0;font-family:Arial,sans-serif;background:#f5f5f5;color:#111;}
+  .container{max-width:800px;margin:20px auto;padding:20px;}
+  h1{font-size:1.5rem;margin-bottom:5px;color:#0a3d62;}
+  p.subtitle{color:#555;margin-top:0;margin-bottom:15px;}
+  .card{background:#fff;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 3px 10px rgba(0,0,0,0.1);}
+  .drop{border:2px dashed #ccc;padding:30px;text-align:center;border-radius:12px;cursor:pointer;}
+  .drop:hover{border-color:#0a3d62;}
+  .btn{padding:8px 12px;border:none;border-radius:8px;background:#0a3d62;color:#fff;font-weight:700;cursor:pointer;margin-top:10px;}
+  img{max-width:100%;border-radius:6px;margin-top:10px;}
+  .flex{display:flex;gap:15px;flex-wrap:wrap;margin-top:10px;}
+  .flex .card{flex:1;min-width:200px;text-align:center;}
+  input[type=range]{width:100%;margin-top:8px;}
+  @media (max-width:600px){ .flex{flex-direction:column;} }
 </style>
 </head>
 <body>
-<h1>Skin Disease Classifier</h1>
-
-<form id="upload-form">
-<input type="file" id="file-input" accept="image/*" required>
-<button type="submit">Predict</button>
-</form>
-
-<p id="loading">🔄 Predicting... please wait</p>
-<p id="error"></p>
-
-<h2>Prediction:</h2>
-<p id="prediction"></p>
-<p id="confidence"></p>
-
-<h2>Images:</h2>
 <div class="container">
-    <div>
-        <p>Original Image</p>
-        <img id="original-img" src="" alt="Original image">
+  <h1>Skin Disease Classifier</h1>
+  <p class="subtitle">Acne • Eczema • Ringworm • Normal — upload an image to classify and view Grad-CAM</p>
+
+  <div class="card">
+    <label id="dropZone" class="drop">Click or drop an image here
+      <input id="fileInput" type="file" accept="image/*" style="display:none">
+    </label>
+    <button id="browseBtn" class="btn">Choose file</button>
+    <div id="chosenName" style="margin-top:6px;color:#555;">No file chosen</div>
+
+    <div style="margin-top:15px;">
+      <div id="predName" style="font-weight:700;color:#0a3d62;">No prediction</div>
+      <div id="predConf" style="color:#555;">—</div>
     </div>
-    <div>
-        <p>Grad-CAM Overlay</p>
-        <img id="gradcam-img" src="" alt="Grad-CAM overlay">
+
+    <div class="flex">
+      <div class="card">
+        <h4>Original Image</h4>
+        <img id="originalImg" alt="Original preview">
+      </div>
+      <div class="card">
+        <h4>Grad-CAM Overlay</h4>
+        <img id="gradcamImg" style="display:none;opacity:0.5" alt="Grad-CAM overlay">
+        <input id="intensity" type="range" min="0" max="1" step="0.01" value="0.5">
+        <button id="downloadBtn" class="btn" style="display:none;margin-top:5px;">Download Grad-CAM</button>
+      </div>
     </div>
+
+    <div style="margin-top:10px;">
+      <button id="predictBtn" class="btn">Predict</button>
+      <button id="clearBtn" class="btn" style="background:#888;color:#fff;">Clear</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Classes</h3>
+    <p style="margin:0;font-size:0.9rem;color:#333;">
+      <strong>Acne:</strong> papules, pustules, comedones.<br>
+      <strong>Eczema:</strong> itchy, red, inflamed patches.<br>
+      <strong>Ringworm:</strong> circular scaly fungal lesion.<br>
+      <strong>Normal:</strong> healthy skin.
+    </p>
+  </div>
 </div>
 
 <script>
-document.getElementById("upload-form").addEventListener("submit", async (e)=>{
-    e.preventDefault();
-    const fileInput = document.getElementById("file-input");
-    const file = fileInput.files[0];
-    if(!file) return;
+const CLASS_NAMES = ["Acne","Eczema","Ringworm","Normal"];
+const fileInput = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+const browseBtn = document.getElementById('browseBtn');
+const chosenName = document.getElementById('chosenName');
+const originalImg = document.getElementById('originalImg');
+const gradcamImg = document.getElementById('gradcamImg');
+const intensity = document.getElementById('intensity');
+const downloadBtn = document.getElementById('downloadBtn');
+const predName = document.getElementById('predName');
+const predConf = document.getElementById('predConf');
+const predictBtn = document.getElementById('predictBtn');
+const clearBtn = document.getElementById('clearBtn');
 
-    document.getElementById("error").innerText = "";
-    document.getElementById("prediction").innerText = "";
-    document.getElementById("confidence").innerText = "";
-    document.getElementById("original-img").src = "";
-    document.getElementById("gradcam-img").src = "";
+browseBtn.addEventListener('click', ()=> fileInput.click());
+dropZone.addEventListener('click', ()=> fileInput.click());
+fileInput.addEventListener('change', handleFile);
+dropZone.addEventListener('dragover', e=>{ e.preventDefault(); });
 
-    document.getElementById("loading").style.display = "block";
+function handleFile(){
+  const file=fileInput.files[0];
+  if(!file){ resetAll(); return; }
+  chosenName.textContent=file.name;
+  const reader=new FileReader();
+  reader.onload=e=>{ originalImg.src=e.target.result; gradcamImg.style.display='none'; downloadBtn.style.display='none'; setPrediction('Ready', undefined); };
+  reader.readAsDataURL(file);
+}
 
-    const formData = new FormData();
-    formData.append("file", file);
+function setPrediction(name, conf){ predName.textContent=name; predConf.textContent=conf!==undefined?`${Math.round(conf*100)}%`:''; }
+function resetAll(){ 
+  fileInput.value=''; chosenName.textContent='No file chosen'; 
+  originalImg.src=''; gradcamImg.src=''; gradcamImg.style.display='none'; 
+  downloadBtn.style.display='none'; 
+  predName.textContent='No prediction'; predConf.textContent=''; 
+}
 
-    try {
-        const response = await fetch("/predict", {method:"POST", body:formData});
-        const data = await response.json();
+clearBtn.addEventListener('click', resetAll);
 
-        if(response.ok){
-            document.getElementById("prediction").innerText = "Label: " + data.prediction;
-            document.getElementById("confidence").innerText = "Confidence: " + data.confidence;
-
-            if(data.original_base64){
-                document.getElementById("original-img").src = data.original_base64;
-            }
-            if(data.gradcam_base64){
-                document.getElementById("gradcam-img").src = data.gradcam_base64;
-            } else {
-                document.getElementById("gradcam-img").alt = "Grad-CAM not generated";
-            }
-        } else {
-            document.getElementById("error").innerText = data.error || "Prediction failed";
-        }
-    } catch(err){
-        console.error(err);
-        document.getElementById("error").innerText = "An error occurred. Check console for details.";
-    } finally {
-        document.getElementById("loading").style.display = "none";
-    }
+predictBtn.addEventListener('click', async ()=>{
+  const file=fileInput.files[0]; if(!file){ alert('Choose an image'); return; }
+  setPrediction('Predicting...', undefined);
+  const fd=new FormData(); fd.append('file',file);
+  try{
+    const res=await fetch('/predict',{method:'POST',body:fd});
+    const data=await res.json();
+    setPrediction(data.prediction, data.confidence);
+    if(data.gradcam_base64){ 
+      gradcamImg.src=data.gradcam_base64; 
+      gradcamImg.style.opacity=intensity.value; 
+      gradcamImg.style.display='block'; 
+      downloadBtn.style.display='inline-block';
+      downloadBtn.onclick=()=> {
+        const a=document.createElement('a'); a.href=data.gradcam_base64; a.download='gradcam.png'; a.click();
+      };
+    } else { gradcamImg.style.display='none'; downloadBtn.style.display='none'; }
+  }catch(err){ console.error(err); alert('Prediction failed'); setPrediction('Error', undefined);}
 });
+
+intensity.addEventListener('input', ()=>{ gradcamImg.style.opacity=intensity.value; });
 </script>
 </body>
 </html>
